@@ -1,0 +1,18 @@
+﻿# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.venv/
+venv/
+.env.*
+# OS junk
+.DS_Store
+Thumbs.db
+# Logs & state
+storage/logs/
+storage/state.json
+# IDE
+.vscode/
+.idea/
