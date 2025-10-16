@@ -1,0 +1,32 @@
+lang: en
+max_results: 100
+
+keywords:
+  - Nintendo
+  - PlayStation
+  - Xbox
+  - Steam
+  - "GTA VI"
+  - "Baldur's Gate"
+  - "Call of Duty"
+  - Sony
+
+verbs:
+  - release
+  - delay
+  - update
+  - patch
+  - review
+  - trailer
+  - development
+
+accounts:
+  - Wario64
+  - PCGamer
+  - Nibellion
+  - 
+
+block_terms:
+  - giveaway
+  - contest
+  - "RT to win"
