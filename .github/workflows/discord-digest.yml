@@ -51,9 +51,30 @@ jobs:
             curl -sf http://localhost:11434/api/tags | grep -q "$OLLAMA_MODEL" && break || sleep 2
           done
 
+      # Show where we are and what files exist (for debugging)
+      - name: Print working dir and list files
+        run: |
+          pwd
+          ls -la
+
+      # If your script is at the repo root:
       - name: Run digest script
         run: |
-          news_to_discord.py
+          python news_to_discord.py
+
+      # --- OR, if it's in a folder like scripts/news_to_discord.py, use ONE of these ---
+
+      # Option A: keep repo root as CWD, use a relative path
+      # - name: Run digest script
+      #   run: |
+      #     python scripts/news_to_discord.py
+
+      # Option B: cd into the folder, then run the script by name
+      # - name: Run digest script
+      #   working-directory: scripts
+      #   run: |
+      #     python news_to_discord.py
+
 
       - name: Stop Ollama
         if: always()
