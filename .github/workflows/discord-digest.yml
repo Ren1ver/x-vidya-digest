@@ -53,9 +53,7 @@ jobs:
 
       - name: Run digest script
         run: |
-          # If your script relies on .env values other than the webhook,
-          # either put them in repo variables/secrets or export here.
-          python path/to/your_script.py
+          news_to_discord.py
 
       - name: Stop Ollama
         if: always()
