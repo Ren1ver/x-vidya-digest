@@ -22,11 +22,9 @@ OLLAMA_URL = (os.getenv("OLLAMA_URL", "http://localhost:11434") or "").rstrip("/
 SOURCES = {
     "News in Vidya": [
         "https://www.belloflostsouls.net/",
-        "https://kotaku.com/" 
     ],
     "The Skinny": [
         "https://www.dexerto.com/",
-        "https://www.dailystar.co.uk/news/weird-news/"
     ],
 }
 
