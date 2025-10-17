@@ -1,32 +1,13 @@
-lang: en
-max_results: 100
+categories:
+  - name: gaming
+    title: "🎮 News in Vidya"
+    accounts:
+      - Okami13_
+      - Wario64
+      - BoLSNEWS
 
-keywords:
-  - Nintendo
-  - PlayStation
-  - Xbox
-  - Steam
-  - "GTA VI"
-  - "Baldur's Gate"
-  - "Call of Duty"
-  - Sony
-
-verbs:
-  - release
-  - delay
-  - update
-  - patch
-  - review
-  - trailer
-  - development
-
-accounts:
-  - Wario64
-  - PCGamer
-  - Nibellion
-  - 
-
-block_terms:
-  - giveaway
-  - contest
-  - "RT to win"
+  - name: drama
+    title: "📣 The Skinny"
+    accounts:
+      - DramaAlert
+      - Awk20000

@@ -1,13 +1,15 @@
 import os
-from pathlib import Path
 from dotenv import load_dotenv
 
-# Load the .env file from the script's folder
-env_path = Path(__file__).with_name(".env")
-load_dotenv(dotenv_path=env_path)
+# Load environment variables from .env file
+load_dotenv()
 
-# Fetch the variable
-url = os.getenv("DISCORD_WEBHOOK_URL")
+# Fetch the API key
+api_key = os.getenv("OPENAI_API_KEY")
 
-# Debug print
-print("DISCORD_WEBHOOK_URL:", url if url else "[NOT FOUND]")
+# Check if it was loaded successfully
+if api_key:
+    print("✅ OPENAI_API_KEY was successfully read from .env")
+    print(f"Value (partially hidden): {api_key[:4]}...{api_key[-4:]}")
+else:
+    print("❌ OPENAI_API_KEY was NOT found. Please check your .env file and its path.")
