@@ -1,0 +1,63 @@
+name: Discord News Digest (Hosted with Ollama)
+
+on:
+  schedule:
+    # Every 12 hours (UTC). Runs at, e.g., 00:00 and 12:00 UTC.
+    - cron: "0 */12 * * *"
+  workflow_dispatch: {}   # allow manual run from the Actions tab
+
+jobs:
+  run-digest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90         # pulling big models can be slow; adjust if needed
+    permissions:
+      contents: read
+    env:
+      DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+      OLLAMA_URL: http://localhost:11434
+      # Pick a model you want. Smaller models pull faster & cost fewer minutes.
+      # Examples: 'llama3.2:3b', 'mistral:7b-instruct', 'llama3.1:8b'
+      OLLAMA_MODEL: mistral:7b
+      PYTHONUNBUFFERED: "1"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python deps
+        run: |
+          python -m pip install -U pip
+          pip install -r requirements.txt
+
+      - name: Start Ollama (Docker)
+        run: |
+          sudo docker run -d --name ollama -p 11434:11434 ollama/ollama:latest
+          # wait for API to come up
+          for i in {1..60}; do
+            curl -sf http://localhost:11434/api/tags && break || sleep 2
+          done
+
+      - name: Pull model
+        run: |
+          echo "Pulling model: $OLLAMA_MODEL"
+          curl -sS -X POST http://localhost:11434/api/pull -d '{"name":"'"$OLLAMA_MODEL"'"}'
+          # wait until it's listed
+          for i in {1..900}; do
+            curl -sf http://localhost:11434/api/tags | grep -q "$OLLAMA_MODEL" && break || sleep 2
+          done
+
+      - name: Run digest script
+        run: |
+          # If your script relies on .env values other than the webhook,
+          # either put them in repo variables/secrets or export here.
+          python path/to/your_script.py
+
+      - name: Stop Ollama
+        if: always()
+        run: |
+          sudo docker rm -f ollama || true

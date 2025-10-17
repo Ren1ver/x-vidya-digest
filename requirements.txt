@@ -1,7 +1,6 @@
 requests
+feedparser
 python-dotenv
-PyYAML
-openai
 readability-lxml
 beautifulsoup4
 lxml
