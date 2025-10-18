@@ -2,8 +2,6 @@ import os
 import re
 import time
 import requests
-import feedparser  # not used now, but harmless; remove if you want
-from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from readability import Document
 from bs4 import BeautifulSoup
@@ -31,7 +29,6 @@ SOURCES = {
 # Per-site scraping limits & posting behavior
 MAX_ARTICLES_PER_SITE = 3          # try to find up to N real articles per site
 MAX_PER_CATEGORY_POST = 9          # hard cap per category (if you want)
-HOURS_LOOKBACK = 24                # skip obviously old links if we can detect date
 UA = {"User-Agent": "Mozilla/5.0 (DiscordDigestBot/2.0)"}
 MAX_DISCORD_LEN = 1900
 
@@ -58,15 +55,10 @@ def strip_html(text: str) -> str:
     plain = unescape(plain)
     return re.sub(r"\s+", " ", plain)
 
-def format_bold_first_word_italic(raw: str) -> str:
+# Italic-only formatter for blurbs (no bolded first word)
+def format_blurb_italic(raw: str) -> str:
     txt = normalize_ws(raw or "")
-    m = re.match(r"^(\S+)(.*)$", txt, flags=re.DOTALL)
-    if not m:
-        return f"*{md_escape(txt)}*"
-    first, rest = m.group(1), m.group(2).lstrip()
-    first_esc = md_escape(first)
-    rest_esc  = md_escape(rest)
-    return f"***{first_esc}** {rest_esc}*" if rest_esc else f"***{first_esc}***"
+    return f"*{md_escape(txt)}*" if txt else ""
 
 def split_sentences(text: str) -> list[str]:
     t = (text or "").strip()
@@ -132,7 +124,6 @@ def same_domain(u: str, base: str) -> bool:
 def looks_like_article_url(u: str) -> bool:
     """Heuristics to prefer article pages over hubs."""
     path = urlparse(u).path.lower()
-    # prefer dated or /news/ paths and avoid tag/category/home/etc.
     if re.search(r"/20\d{2}/\d{2}/\d{2}/", path):  # /YYYY/MM/DD/
         return True
     if "/news/" in path or "/story/" in path or "/article" in path:
@@ -156,7 +147,6 @@ def extract_opengraph_article(html: str) -> bool:
     og = soup.find("meta", {"property": "og:type"})
     if og and str(og.get("content","")).lower().strip() == "article":
         return True
-    # schema.org Article
     if soup.find(attrs={"itemtype": re.compile("schema.org/(News)?Article", re.I)}):
         return True
     return False
@@ -189,7 +179,6 @@ def discover_article_links(section_url: str, max_links=5) -> list[str]:
         score = (2 if is_article else 0) + min(3, len(urlparse(u).path.split("/")))
         scored.append((score, u))
         if len(scored) >= max_links * 3:
-            # fetched enough to pick best
             break
 
     scored.sort(key=lambda x: x[0], reverse=True)
@@ -280,85 +269,11 @@ def generate_blurb_with_ollama(title: str, url: str, article_text: str, min_word
 
     return normalize_ws(out)
 
-CLICKBAIT_RE = re.compile(
-    r"\b(here'?s|this|these|things|you won'?t believe|shocking|surprising|amazing|must[- ]see|what we know|everything you need to know|explained)\b",
-    re.IGNORECASE,
-)
-
-def tidy_headline_from_title(title: str, max_words: int = 10) -> str:
-    """Deterministic, no-clickbait headline from the page title."""
-    t = (title or "").strip()
-    # remove leading site prefix like 'Kotaku - ' or 'Kotaku: '
-    t = re.sub(r"^\s*[\w.&'’\- ]+\s*[-:]\s*", "", t)
-    # strip quotes and collapse spaces
-    t = t.strip(' "\'“”‘’')
-    t = re.sub(r"\s+", " ", t)
-    # remove clickbait-y fillers
-    t = CLICKBAIT_RE.sub("", t)
-    t = re.sub(r"\s+", " ", t).strip()
-    # cap words and drop trailing punctuation
-    words = t.split()
-    if len(words) > max_words:
-        t = " ".join(words[:max_words])
-    t = re.sub(r"[.?!,:;–—-]+$", "", t)
-    # title case lightly (keep ALLCAPS/acronyms as-is)
-    parts = []
-    for w in t.split():
-        if w.isupper():
-            parts.append(w)
-        else:
-            parts.append(w.capitalize())
-    out = " ".join(parts).strip()
-    # safety: if we trimmed to nothing, use first few words from original
-    if not out:
-        out = " ".join((title or "Update").split()[:max_words])
-    return out
-
-def generate_headline_with_ollama(title: str, article_text: str, min_words=6, max_words=10) -> str:
-    """
-    Ask Ollama for a concise, factual mini-headline using ONLY article text.
-    Returns plain text (no markdown). Falls back to '' on error.
-    """
-    if not article_text:
-        return ""
-    ctx = article_text[:1800]
-    sys_prompt = (
-        "You are a precise gaming news editor. From ONLY the provided article text, "
-        f"write a clear, factual mini-headline ({min_words}-{max_words} words). "
-        "No clickbait, no hype, no site names, no emojis, no quotes, no trailing punctuation. "
-        "Focus on the main subject + action. Output plain text only."
-    )
-    user_prompt = f"TITLE: {title}\nARTICLE TEXT:\n{ctx}\n\nReturn only the mini-headline."
-
-    try:
-        out = _ollama_chat(
-            [{"role": "system", "content": sys_prompt}, {"role": "user", "content": user_prompt}],
-            temperature=0.25,  # tight for factual tone
-            ctx=2048,
-        )
-    except FileNotFoundError:
-        try:
-            out = _ollama_generate(sys_prompt + "\n\n" + user_prompt, temperature=0.25, ctx=2048)
-        except requests.RequestException:
-            return ""
-    except requests.RequestException:
-        return ""
-
-    # sanitize and validate length
-    h = normalize_ws(out)
-    h = re.sub(r"[“”\"'‘’]+", "", h)           # remove quotes if any
-    h = re.sub(r"[.?!,:;–—-]+$", "", h).strip() # drop trailing punctuation
-    wc = len(h.split())
-    if wc < min_words or wc > max_words:
-        return ""
-    return h
-
-
 # -------- Summarizer (no header; per-article blurbs) --------
 def summarize_source_with_ollama(category_name: str, site_urls: list[str]) -> list[str]:
     """
     For each site URL, discover article links, pull full text, produce:
-      **Mini Headline**
+      **Article Title**
       *Blurb…* [link](url)
     Returns a list of formatted items for the category.
     """
@@ -377,16 +292,19 @@ def summarize_source_with_ollama(category_name: str, site_urls: list[str]) -> li
             seen_urls.add(norm_u)
 
             title, fulltext = fetch_article_text_and_title(art_url, hard_cap=4000)
+
+            # Fallback text extraction if needed
             if not fulltext:
                 html = fetch_html(art_url)
                 fulltext = strip_html(html)[:2000] if html else ""
 
-            # --- Generate mini headline (model -> fallback) ---
-            mini_head = generate_headline_with_ollama(title or "", fulltext)
-            if not mini_head:
-                mini_head = tidy_headline_from_title(title or "", max_words=10)
+            # Headline: use article's own title (escaped & bold)
+            if not title:
+                path_bits = [p for p in urlparse(norm_u).path.split("/") if p]
+                title = re.sub(r"[-_]+", " ", path_bits[-1]).strip().title() if path_bits else "Update"
+            mini_head_fmt = f"**{md_escape(title)}**"
 
-            # --- Generate blurb (model -> extractive fallback) ---
+            # Blurb (model -> extractive fallback)
             blurb_raw = ""
             if fulltext:
                 blurb_raw = generate_blurb_with_ollama(title or "", norm_u, fulltext, min_words=70, max_words=130)
@@ -394,16 +312,15 @@ def summarize_source_with_ollama(category_name: str, site_urls: list[str]) -> li
                 cleaned = clean_snippet_text(fulltext or title or "")
                 blurb_raw = best_sentences(cleaned, max_sentences=3, min_words=6, max_chars=480)
 
-            # dedupe by blurb text to avoid near-duplicates across sites
+            # dedupe by blurb text
             key = re.sub(r"[^\w\s]", " ", (blurb_raw or "").lower())
             key = re.sub(r"\s+", " ", key).strip()
             if key in seen_blurbs or not blurb_raw:
                 continue
             seen_blurbs.add(key)
 
-            # --- Final formatting ---
-            mini_head_fmt = f"**{md_escape(mini_head)}**"
-            blurb_fmt = format_bold_first_word_italic(blurb_raw)
+            # Italicize whole blurb; no bold-first-word
+            blurb_fmt = format_blurb_italic(blurb_raw)
             item = f"{mini_head_fmt}\n{blurb_fmt} [link]({norm_u})"
             lines.append(item)
 
@@ -411,7 +328,6 @@ def summarize_source_with_ollama(category_name: str, site_urls: list[str]) -> li
             break
 
     return lines
-
 
 # -------- Discord --------
 def send_discord_message(content: str):
@@ -458,7 +374,6 @@ def post_to_discord(digest: dict):
                 send_discord_message(f"{header}\n>>> {chunk}")
             else:
                 send_discord_message(f">>> {chunk}")
-
 
 # -------- Main --------
 if __name__ == "__main__":
